@@ -45,6 +45,7 @@ jobs:
     needs: [build]
     permissions:
       contents: write
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
