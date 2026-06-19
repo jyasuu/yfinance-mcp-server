@@ -1,6 +1,6 @@
 # yfinance-mcp-server
 
-MCP server wrapping [yfinance-rs](https://crates.io/crates/yfinance-rs) v0.9, exposing 25+ Yahoo Finance tools over stdio transport.
+MCP server wrapping [yfinance-rs](https://crates.io/crates/yfinance-rs) v0.9, exposing 25+ Yahoo Finance tools over stdio or HTTP/SSE transport.
 
 ## Usage
 
@@ -117,8 +117,25 @@ Every tool response includes a JSON block followed by a Markdown table:
 
 ## Remote MCP (workaround)
 
-This server uses `rmcp` v0.16 with stdio transport. For HTTP/SSE transport, wrap with the [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
+## HTTP / SSE Transport
+
+Set `YFINANCE_HTTP_PORT` to run as an HTTP+SSE server (Streamable HTTP):
 
 ```sh
-npx @modelcontextprotocol/inspector /path/to/yfinance-mcp
+YFINANCE_HTTP_PORT=8080 ./yfinance-mcp
+```
+
+Listens on `0.0.0.0:<port>` with SSE endpoint at `/mcp`. Accept header must include both `application/json` and `text/event-stream`.
+
+Example client config:
+
+```json
+{
+  "mcpServers": {
+    "yfinance": {
+      "type": "remote",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
