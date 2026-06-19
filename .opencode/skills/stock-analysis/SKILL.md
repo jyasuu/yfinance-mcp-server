@@ -11,7 +11,7 @@ When the user asks you to analyze a stock, produce a structured report by callin
 
 ### 1. Identify the symbol
 
-If the user gives a company name (e.g. "Apple", "TSMC"), ask for the ticker or look it up:
+If the user gives a company name (e.g. "Apple", "TSMC"), look it up:
 
 ```
 Tool: search_tickers
@@ -19,6 +19,12 @@ Input: {"query": "<company name>"}
 ```
 
 Use the most relevant result's symbol.
+
+**Suffix rules** (when search_tickers returns nothing for a known market):
+- Taiwan: numeric symbols need `.TW` suffix (e.g. `0050.TW`, `2330.TW`)
+- Hong Kong: add `.HK` suffix (e.g. `0700.HK`, `0005.HK`)
+- London: add `.L` suffix (e.g. `BP.L`, `HSBA.L`)
+- If the first suffix fails, try another or ask the user.
 
 ### 2. Gather data (parallel calls)
 
@@ -77,12 +83,12 @@ Present the findings in this structure:
 - (Top 3 headlines with brief 1-line takeaway)
 
 ### Summary
-1-2 sentence verdict on the stock based on the combined data.
+1-2 sentence verdict synthesizing price action, fundamentals, analyst consensus, and news sentiment. Call out if news aligns or conflicts with the technical/fundamental picture.
 ```
 
 ### 4. Use good judgment
 
 - If the stock is clearly trending up with strong volume, bullish analyst consensus, and positive news — say so with supporting evidence.
 - If data conflicts (price down but analysts bullish), highlight the tension.
-- If a tool errors (e.g. no recommendations data for a small cap), note it and continue with what you have.
-- For Taiwan stocks, use `.TW` suffix (e.g. `2330.TW` for TSMC). For Hong Kong, use `.HK`.
+- If a tool errors (e.g. no recommendations/news for a small cap or ETF), say "No recommendations data available" — **do not** show the raw MCP error code or URL.
+- If `get_news` returns empty for an ETF, try fetching news for its top holding instead (e.g. for `0050.TW`, try `2330.TW`).

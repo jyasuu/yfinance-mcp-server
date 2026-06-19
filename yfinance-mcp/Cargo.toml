@@ -1,6 +1,6 @@
 [package]
 name = "yfinance-mcp"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -15,3 +15,8 @@ schemars = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = "0.4"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

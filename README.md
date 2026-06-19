@@ -115,6 +115,19 @@ Every tool response includes a JSON block followed by a Markdown table:
 | ... | ... |
 ```
 
+## Docker
+
+```sh
+docker pull ghcr.io/jyasuu/yfinance-mcp:latest
+docker run ghcr.io/jyasuu/yfinance-mcp:latest
+```
+
+Images are published on tag (semver + `latest`) and on `main` branch pushes.
+
+## Stock Analysis Skill
+
+An opencode skill is included at `.opencode/skills/stock-analysis/SKILL.md`. It provides a structured stock analysis workflow: symbol identification → parallel data fetch (info, historical data, recommendations, news) → compiled report with price snapshot, trend, fundamentals, analyst consensus, and news sentiment. Triggered on keywords like "analyze", "trend", "outlook".
+
 ## HTTP / SSE Transport
 
 Set `YFINANCE_HTTP_PORT` to run as an HTTP+SSE server (Streamable HTTP):
