@@ -45,15 +45,36 @@ fn build_client() -> Result<Arc<yfinance_rs::YfClient>, Box<dyn std::error::Erro
     let max_retries = std::env::var("YFINANCE_MAX_RETRIES")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(3);
+        .unwrap_or(5);
+
+    let retry_base = std::env::var("YFINANCE_RETRY_BASE_DELAY")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(2));
+
+    let retry_max = std::env::var("YFINANCE_RETRY_MAX_DELAY")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(30));
+
+    use yfinance_rs::core::client::Backoff;
+    let retry_config = yfinance_rs::core::client::RetryConfig {
+        max_retries,
+        backoff: Backoff::Exponential {
+            base: retry_base,
+            factor: 2.0,
+            max: retry_max,
+            jitter: true,
+        },
+        ..Default::default()
+    };
 
     let client = YfClientBuilder::default()
         .timeout(timeout)
         .cache_ttl(cache_ttl)
-        .retry_config(yfinance_rs::core::client::RetryConfig {
-            max_retries,
-            ..Default::default()
-        })
+        .retry_config(retry_config)
         .build()?;
 
     Ok(Arc::new(client))
