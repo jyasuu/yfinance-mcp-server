@@ -1,31 +1,28 @@
 use std::sync::Arc;
 
 use rmcp::{
-    ErrorData as McpError, ServerHandler,
-    handler::server::router::tool::ToolRouter,
-    handler::server::wrapper::Parameters,
-    model::*,
-    schemars, tool, tool_handler, tool_router,
+    handler::server::router::tool::ToolRouter, handler::server::wrapper::Parameters, model::*,
+    schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
 };
 
 use yfinance_rs::{Interval, Range, Ticker, YfClient};
 
 use crate::format;
 
-fn parse_range(s: Option<&str>) -> Option<Range> {
+fn parse_range(s: Option<&str>) -> Range {
     match s {
-        Some("1d") | None => Some(Range::D1),
-        Some("5d") => Some(Range::D5),
-        Some("1mo") => Some(Range::M1),
-        Some("3mo") => Some(Range::M3),
-        Some("6mo") => Some(Range::M6),
-        Some("ytd") => Some(Range::Ytd),
-        Some("1y") => Some(Range::Y1),
-        Some("2y") => Some(Range::Y2),
-        Some("5y") => Some(Range::Y5),
-        Some("10y") => Some(Range::Y10),
-        Some("max") => Some(Range::Max),
-        Some(_) => None,
+        Some("1d") | None => Range::D1,
+        Some("5d") => Range::D5,
+        Some("1mo") => Range::M1,
+        Some("3mo") => Range::M3,
+        Some("6mo") => Range::M6,
+        Some("ytd") => Range::Ytd,
+        Some("1y") => Range::Y1,
+        Some("2y") => Range::Y2,
+        Some("5y") => Range::Y5,
+        Some("10y") => Range::Y10,
+        Some("max") => Range::Max,
+        Some(_) => Range::M6,
     }
 }
 
@@ -78,8 +75,11 @@ impl YFinanceServer {
         Ticker::new(&self.client, symbol)
     }
 
-    async fn exec<T>(f: impl std::future::Future<Output = Result<T, yfinance_rs::core::error::YfError>>) -> Result<T, McpError> {
-        f.await.map_err(|e| McpError::internal_error(e.to_string(), None::<serde_json::Value>))
+    async fn exec<T>(
+        f: impl std::future::Future<Output = Result<T, yfinance_rs::core::error::YfError>>,
+    ) -> Result<T, McpError> {
+        f.await
+            .map_err(|e| McpError::internal_error(e.to_string(), None::<serde_json::Value>))
     }
 
     // ── Core Market Data ──────────────────────────────────────────
@@ -87,7 +87,7 @@ impl YFinanceServer {
     #[tool(description = "Get a real-time quote for a ticker symbol")]
     async fn get_quote(
         &self,
-        Parameters(args): Parameters<QuoteArgs>,
+        Parameters(args): Parameters<SymbolArg>,
     ) -> Result<CallToolResult, McpError> {
         let ticker = self.ticker(&args.symbol);
         let quote = Self::exec(ticker.quote()).await?;
@@ -110,7 +110,9 @@ impl YFinanceServer {
         )]))
     }
 
-    #[tool(description = "Get comprehensive aggregate info for a ticker (quote + profile + analysis)")]
+    #[tool(
+        description = "Get comprehensive aggregate info for a ticker (quote + profile + analysis)"
+    )]
     async fn get_info(
         &self,
         Parameters(args): Parameters<SymbolArg>,
@@ -129,24 +131,32 @@ impl YFinanceServer {
         Parameters(args): Parameters<HistoryArgs>,
     ) -> Result<CallToolResult, McpError> {
         let ticker = self.ticker(&args.symbol);
-        let range = parse_range(args.range.as_deref());
+        let range = Some(parse_range(args.range.as_deref()));
         let interval = parse_interval(args.interval.as_deref());
-        let candles = Self::exec(ticker.history(range, interval, args.prepost.unwrap_or(false))).await?;
+        let candles =
+            Self::exec(ticker.history(range, interval, args.prepost.unwrap_or(false))).await?;
         let j = json_val(&candles);
         let headers = vec!["Date", "Open", "High", "Low", "Close", "Volume"];
-        let rows: Vec<Vec<String>> = candles.iter().map(|c| {
-            vec![
-                c.ts.to_string(),
-                json_val(&c.ohlc.open).to_string(),
-                json_val(&c.ohlc.high).to_string(),
-                json_val(&c.ohlc.low).to_string(),
-                json_val(&c.ohlc.close).to_string(),
-                json_val(&c.volume).to_string(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = candles
+            .iter()
+            .map(|c| {
+                vec![
+                    c.ts.to_string(),
+                    json_val(&c.ohlc.open).to_string(),
+                    json_val(&c.ohlc.high).to_string(),
+                    json_val(&c.ohlc.low).to_string(),
+                    json_val(&c.ohlc.close).to_string(),
+                    json_val(&c.volume).to_string(),
+                ]
+            })
+            .collect();
         Ok(CallToolResult::success(vec![Content::text(
             format::json_md_with_table(
-                &format!("Historical Data: {} ({} candles)", args.symbol, candles.len()),
+                &format!(
+                    "Historical Data: {} ({} candles)",
+                    args.symbol,
+                    candles.len()
+                ),
                 &j,
                 &headers,
                 &rows,
@@ -160,25 +170,29 @@ impl YFinanceServer {
         Parameters(args): Parameters<CorporateActionsArgs>,
     ) -> Result<CallToolResult, McpError> {
         let ticker = self.ticker(&args.symbol);
-        let range = parse_range(args.range.as_deref());
-        let actions = Self::exec(ticker.actions(range)).await?;
+        let actions = Self::exec(ticker.actions(Some(parse_range(args.range.as_deref())))).await?;
         let j = json_val(&actions);
         let headers = vec!["Type", "Date", "Details"];
-        let rows: Vec<Vec<String>> = actions.iter().map(|a| {
-            let (typ, details) = match a {
-                yfinance_rs::Action::Dividend { date: _, amount } => {
-                    ("Dividend".into(), json_val(amount).to_string())
-                }
-                yfinance_rs::Action::Split { date: _, numerator, denominator } => {
-                    ("Split".into(), format!("{}:{}", numerator, denominator))
-                }
-                yfinance_rs::Action::CapitalGain { date: _, gain } => {
-                    ("Capital Gain".into(), json_val(gain).to_string())
-                }
-                _ => ("Unknown".into(), "N/A".into()),
-            };
-            vec![typ, fmt_action_date(a), details]
-        }).collect();
+        let rows: Vec<Vec<String>> = actions
+            .iter()
+            .map(|a| {
+                let (typ, details) = match a {
+                    yfinance_rs::Action::Dividend { date: _, amount } => {
+                        ("Dividend".into(), json_val(amount).to_string())
+                    }
+                    yfinance_rs::Action::Split {
+                        date: _,
+                        numerator,
+                        denominator,
+                    } => ("Split".into(), format!("{}:{}", numerator, denominator)),
+                    yfinance_rs::Action::CapitalGain { date: _, gain } => {
+                        ("Capital Gain".into(), json_val(gain).to_string())
+                    }
+                    _ => ("Unknown".into(), "N/A".into()),
+                };
+                vec![typ, fmt_action_date(a), details]
+            })
+            .collect();
         Ok(CallToolResult::success(vec![Content::text(
             format::json_md_with_table(
                 &format!("Corporate Actions: {}", args.symbol),
@@ -213,15 +227,18 @@ impl YFinanceServer {
         let quotes = Self::exec(yfinance_rs::quote::quotes(&self.client, symbols)).await?;
         let j = json_val(&quotes);
         let headers = vec!["Symbol", "Price", "Bid", "Ask", "Volume"];
-        let rows: Vec<Vec<String>> = quotes.iter().map(|q| {
-            vec![
-                q.instrument.symbol.as_str().to_string(),
-                json_val(&q.price).to_string(),
-                json_val(&q.bid).to_string(),
-                json_val(&q.ask).to_string(),
-                json_val(&q.day_volume).to_string(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = quotes
+            .iter()
+            .map(|q| {
+                vec![
+                    q.instrument.symbol.as_str().to_string(),
+                    json_val(&q.price).to_string(),
+                    json_val(&q.bid).to_string(),
+                    json_val(&q.ask).to_string(),
+                    json_val(&q.day_volume).to_string(),
+                ]
+            })
+            .collect();
         Ok(CallToolResult::success(vec![Content::text(
             format::json_md_with_table("Batch Quotes", &j, &headers, &rows),
         )]))
@@ -233,7 +250,7 @@ impl YFinanceServer {
         Parameters(args): Parameters<DownloadArgs>,
     ) -> Result<CallToolResult, McpError> {
         let symbols: Vec<&str> = args.symbols.iter().map(|s| s.as_str()).collect();
-        let range = parse_range(args.range.as_deref()).unwrap_or(Range::M6);
+        let range = parse_range(args.range.as_deref());
         let interval = parse_interval(args.interval.as_deref()).unwrap_or(Interval::D1);
         let results = Self::exec(async {
             yfinance_rs::DownloadBuilder::new(&self.client)
@@ -242,9 +259,13 @@ impl YFinanceServer {
                 .interval(interval)
                 .run()
                 .await
-        }).await?;
+        })
+        .await?;
         let j = json_val(&results.entries);
-        let mut md = format!("## Multi-Symbol Download\n\n```json\n{}\n```\n", serde_json::to_string_pretty(&j).unwrap_or_default());
+        let mut md = format!(
+            "## Multi-Symbol Download\n\n```json\n{}\n```\n",
+            serde_json::to_string_pretty(&j).unwrap_or_default()
+        );
         for entry in &results.entries {
             md.push_str(&format!("\n### {}\n\n| Date | Open | High | Low | Close | Volume |\n|------|------|------|------|-------|--------|\n", entry.instrument.symbol.as_str()));
             for c in &entry.history.candles {
@@ -277,7 +298,18 @@ impl YFinanceServer {
         };
         let j = json_val(&data);
         Ok(CallToolResult::success(vec![Content::text(
-            format::json_md(&format!("Income Statement: {} ({})", args.symbol, if args.quarterly.unwrap_or(false) { "quarterly" } else { "annual" }), &j),
+            format::json_md(
+                &format!(
+                    "Income Statement: {} ({})",
+                    args.symbol,
+                    if args.quarterly.unwrap_or(false) {
+                        "quarterly"
+                    } else {
+                        "annual"
+                    }
+                ),
+                &j,
+            ),
         )]))
     }
 
@@ -294,7 +326,18 @@ impl YFinanceServer {
         };
         let j = json_val(&data);
         Ok(CallToolResult::success(vec![Content::text(
-            format::json_md(&format!("Balance Sheet: {} ({})", args.symbol, if args.quarterly.unwrap_or(false) { "quarterly" } else { "annual" }), &j),
+            format::json_md(
+                &format!(
+                    "Balance Sheet: {} ({})",
+                    args.symbol,
+                    if args.quarterly.unwrap_or(false) {
+                        "quarterly"
+                    } else {
+                        "annual"
+                    }
+                ),
+                &j,
+            ),
         )]))
     }
 
@@ -311,7 +354,18 @@ impl YFinanceServer {
         };
         let j = json_val(&data);
         Ok(CallToolResult::success(vec![Content::text(
-            format::json_md(&format!("Cash Flow: {} ({})", args.symbol, if args.quarterly.unwrap_or(false) { "quarterly" } else { "annual" }), &j),
+            format::json_md(
+                &format!(
+                    "Cash Flow: {} ({})",
+                    args.symbol,
+                    if args.quarterly.unwrap_or(false) {
+                        "quarterly"
+                    } else {
+                        "annual"
+                    }
+                ),
+                &j,
+            ),
         )]))
     }
 
@@ -352,16 +406,19 @@ impl YFinanceServer {
         let recs = Self::exec(ticker.recommendations()).await?;
         let j = json_val(&recs);
         let headers = vec!["Period", "Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"];
-        let rows: Vec<Vec<String>> = recs.iter().map(|r| {
-            vec![
-                r.period.to_string(),
-                r.strong_buy.map(|v| v.to_string()).unwrap_or_default(),
-                r.buy.map(|v| v.to_string()).unwrap_or_default(),
-                r.hold.map(|v| v.to_string()).unwrap_or_default(),
-                r.sell.map(|v| v.to_string()).unwrap_or_default(),
-                r.strong_sell.map(|v| v.to_string()).unwrap_or_default(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = recs
+            .iter()
+            .map(|r| {
+                vec![
+                    r.period.to_string(),
+                    r.strong_buy.map(|v| v.to_string()).unwrap_or_default(),
+                    r.buy.map(|v| v.to_string()).unwrap_or_default(),
+                    r.hold.map(|v| v.to_string()).unwrap_or_default(),
+                    r.sell.map(|v| v.to_string()).unwrap_or_default(),
+                    r.strong_sell.map(|v| v.to_string()).unwrap_or_default(),
+                ]
+            })
+            .collect();
         Ok(CallToolResult::success(vec![Content::text(
             format::json_md_with_table(
                 &format!("Recommendations: {}", args.symbol),
@@ -422,15 +479,20 @@ impl YFinanceServer {
         let holders = Self::exec(ticker.institutional_holders()).await?;
         let j = json_val(&holders);
         let headers = vec!["Holder", "Shares", "% Held", "Value", "Date Reported"];
-        let rows: Vec<Vec<String>> = holders.iter().map(|h| {
-            vec![
-                h.holder.clone(),
-                h.shares.map(|s| s.to_string()).unwrap_or_else(|| "N/A".to_string()),
-                json_val(&h.pct_held).to_string(),
-                json_val(&h.value).to_string(),
-                h.date_reported.to_string(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = holders
+            .iter()
+            .map(|h| {
+                vec![
+                    h.holder.clone(),
+                    h.shares
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "N/A".to_string()),
+                    json_val(&h.pct_held).to_string(),
+                    json_val(&h.value).to_string(),
+                    h.date_reported.to_string(),
+                ]
+            })
+            .collect();
         Ok(CallToolResult::success(vec![Content::text(
             format::json_md_with_table(
                 &format!("Institutional Holders: {}", args.symbol),
@@ -521,19 +583,32 @@ impl YFinanceServer {
         )]))
     }
 
-    #[tool(description = "Get the full option chain (calls and puts) for a ticker, optionally for a specific expiration date")]
+    #[tool(
+        description = "Get the full option chain (calls and puts) for a ticker, optionally for a specific expiration date"
+    )]
     async fn get_option_chain(
         &self,
         Parameters(args): Parameters<OptionChainArgs>,
     ) -> Result<CallToolResult, McpError> {
         let ticker = self.ticker(&args.symbol);
-        let chain = Self::exec(ticker.option_chain(args.date)).await?;
+        let date_ts = args.date.as_ref().and_then(|d| {
+            use chrono::NaiveDate;
+            NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                .ok()
+                .map(|nd| nd.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
+        });
+        let chain = Self::exec(ticker.option_chain(date_ts)).await?;
         let j = json_val(&chain);
         let calls: Vec<_> = chain.calls().collect();
         let puts: Vec<_> = chain.puts().collect();
         Ok(CallToolResult::success(vec![Content::text(
             format::json_md(
-                &format!("Option Chain: {} ({} calls, {} puts)", args.symbol, calls.len(), puts.len()),
+                &format!(
+                    "Option Chain: {} ({} calls, {} puts)",
+                    args.symbol,
+                    calls.len(),
+                    puts.len()
+                ),
                 &j,
             ),
         )]))
@@ -550,14 +625,17 @@ impl YFinanceServer {
         let articles = Self::exec(ticker.news()).await?;
         let j = json_val(&articles);
         let headers = vec!["Title", "Publisher", "Date", "Link"];
-        let rows: Vec<Vec<String>> = articles.iter().map(|a| {
-            vec![
-                a.title.clone(),
-                a.publisher.clone().unwrap_or_default(),
-                a.published_at.to_string(),
-                a.link.clone().unwrap_or_default(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = articles
+            .iter()
+            .map(|a| {
+                vec![
+                    a.title.clone(),
+                    a.publisher.clone().unwrap_or_default(),
+                    a.published_at.to_string(),
+                    a.link.clone().unwrap_or_default(),
+                ]
+            })
+            .collect();
         Ok(CallToolResult::success(vec![Content::text(
             format::json_md_with_table(
                 &format!("News: {} ({} articles)", args.symbol, articles.len()),
@@ -630,21 +708,20 @@ impl YFinanceServer {
         let results = Self::exec(yfinance_rs::search::search(&self.client, &args.query)).await?;
         let j = json_val(&results);
         let headers = vec!["Symbol", "Name", "Exchange", "Type"];
-        let rows: Vec<Vec<String>> = results.results.iter().map(|r| {
-            vec![
-                r.instrument.symbol.as_str().to_string(),
-                r.name.clone().unwrap_or_default(),
-                json_val(&r.instrument.exchange).to_string(),
-                json_val(&r.instrument.kind).to_string(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = results
+            .results
+            .iter()
+            .map(|r| {
+                vec![
+                    r.instrument.symbol.as_str().to_string(),
+                    r.name.clone().unwrap_or_default(),
+                    json_val(&r.instrument.exchange).to_string(),
+                    json_val(&r.instrument.kind).to_string(),
+                ]
+            })
+            .collect();
         Ok(CallToolResult::success(vec![Content::text(
-            format::json_md_with_table(
-                &format!("Search: {}", args.query),
-                &j,
-                &headers,
-                &rows,
-            ),
+            format::json_md_with_table(&format!("Search: {}", args.query), &j, &headers, &rows),
         )]))
     }
 }
@@ -674,12 +751,6 @@ impl ServerHandler for YFinanceServer {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SymbolArg {
     /// The ticker symbol (e.g. AAPL, MSFT, GOOGL)
-    pub symbol: String,
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct QuoteArgs {
-    /// The ticker symbol
     pub symbol: String,
 }
 
@@ -731,8 +802,8 @@ pub struct StatementArgs {
 pub struct OptionChainArgs {
     /// The ticker symbol
     pub symbol: String,
-    /// Optional Unix timestamp for a specific expiration date. If omitted, uses nearest expiration.
-    pub date: Option<i64>,
+    /// Optional expiration date in YYYY-MM-DD format. If omitted, uses nearest expiration.
+    pub date: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]

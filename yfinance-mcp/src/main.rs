@@ -4,12 +4,11 @@ mod server;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rmcp::{ServiceExt, transport::stdio};
 use rmcp::transport::{
-    StreamableHttpService, StreamableHttpServerConfig,
-    streamable_http_server::session::local::LocalSessionManager,
+    streamable_http_server::session::local::LocalSessionManager, StreamableHttpServerConfig,
+    StreamableHttpService,
 };
-use tokio_util::sync::CancellationToken;
+use rmcp::{transport::stdio, ServiceExt};
 use tracing_subscriber::EnvFilter;
 
 use yfinance_rs::YfClientBuilder;
@@ -50,18 +49,16 @@ fn build_client() -> Result<Arc<yfinance_rs::YfClient>, Box<dyn std::error::Erro
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
 
-    let http_port = std::env::var("YFINANCE_HTTP_PORT")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok());
+    let client = build_client()?;
 
-    if let Some(port) = http_port {
-        let client = build_client()?;
-        let ct = CancellationToken::new();
+    if let Some(port) = std::env::var("YFINANCE_HTTP_PORT")
+        .ok()
+        .and_then(|s| s.parse::<u16>().ok())
+    {
         let service = StreamableHttpService::new(
             {
                 let client = client.clone();
@@ -71,7 +68,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             StreamableHttpServerConfig {
                 stateful_mode: true,
                 sse_keep_alive: Some(Duration::from_secs(15)),
-                cancellation_token: ct.child_token(),
                 ..Default::default()
             },
         );
@@ -81,7 +77,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         axum::serve(listener, router).await?;
     } else {
-        let client = build_client()?;
         let server = YFinanceServer::new(client);
         tracing::info!("Starting yfinance MCP server over stdio...");
         server.serve(stdio()).await?.waiting().await?;

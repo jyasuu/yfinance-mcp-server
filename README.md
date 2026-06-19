@@ -34,72 +34,72 @@ cargo build --release
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_quote` | `symbol` | Current quote (price, change, volume, etc.) |
-| `yf_fast_info` | `symbol` | Fast-access info snapshot |
-| `yf_info` | `symbol` | Full instrument metadata |
-| `yf_profile` | `symbol` | Company profile (sector, industry, description) |
-| `yf_calendar` | `symbol` | Earnings calendar dates |
-| `yf_sustainability` | `symbol` | ESG risk scores |
-| `yf_isin` | `symbol` | ISIN lookup by ticker |
+| `get_quote` | `symbol` | Current quote (price, change, volume, etc.) |
+| `get_fast_info` | `symbol` | Fast-access info snapshot |
+| `get_info` | `symbol` | Full instrument metadata |
+| `get_profile` | `symbol` | Company profile (sector, industry, description) |
+| `get_calendar` | `symbol` | Earnings calendar dates |
+| `get_sustainability` | `symbol` | ESG risk scores |
+| `get_isin` | `symbol` | ISIN lookup by ticker |
 
 ### Historical Data
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_historical_data` | `symbol`, `interval`(opt), `range`(opt) | OHLCV candles over time |
-| `yf_download_data` | `symbols`, `interval`(opt), `range`(opt) | Multi-symbol historical download |
+| `get_historical_data` | `symbol`, `interval`(opt), `range`(opt) | OHLCV candles over time |
+| `download_data` | `symbols`, `interval`(opt), `range`(opt) | Multi-symbol historical download |
 
 ### Financials
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_income_stmt` | `symbol` | Income statement |
-| `yf_balance_sheet` | `symbol` | Balance sheet |
-| `yf_cashflow` | `symbol` | Cash flow statement |
-| `yf_earnings` | `symbol` | Earnings history |
-| `yf_earnings_trend` | `symbol` | Earnings trend estimates |
-| `yf_key_statistics` | `symbol` | Key statistics summary |
+| `get_income_statement` | `symbol`, `quarterly`(opt) | Income statement |
+| `get_balance_sheet` | `symbol`, `quarterly`(opt) | Balance sheet |
+| `get_cashflow` | `symbol`, `quarterly`(opt) | Cash flow statement |
+| `get_earnings` | `symbol` | Earnings history |
+| `get_earnings_trend` | `symbol` | Earnings trend estimates |
+| `get_key_statistics` | `symbol` | Key statistics summary |
 
 ### Recommendations & Price Targets
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_recommendations` | `symbol` | Analyst recommendations |
-| `yf_recommendations_summary` | `symbol` | Recommendations summary breakdown |
-| `yf_price_target` | `symbol` | Price target data |
-| `yf_upgrades_downgrades` | `symbol` | Upgrade/downgrade history |
+| `get_recommendations` | `symbol` | Analyst recommendations |
+| `get_recommendations_summary` | `symbol` | Recommendations summary breakdown |
+| `get_price_target` | `symbol` | Price target data |
+| `get_upgrades_downgrades` | `symbol` | Upgrade/downgrade history |
 
 ### Holders
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_institutional_holders` | `symbol` | Institutional holders |
-| `yf_major_holders` | `symbol` | Major holders breakdown |
-| `yf_insider_holders` | `symbol` | Insider holdings |
-| `yf_mutual_fund_holders` | `symbol` | Mutual fund holders |
-| `yf_insider_roster` | `symbol` | Insider roster |
-| `yf_net_share_purchase` | `symbol` | Net insider share purchase activity |
-| `yf_corporate_actions` | `symbol` | Corporate actions |
+| `get_institutional_holders` | `symbol` | Institutional holders |
+| `get_major_holders` | `symbol` | Major holders breakdown |
+| `get_insider_transactions` | `symbol` | Recent insider transactions |
+| `get_mutual_fund_holders` | `symbol` | Mutual fund holders |
+| `get_insider_roster` | `symbol` | Insider roster |
+| `get_net_share_purchase_activity` | `symbol` | Net insider share purchase activity |
+| `get_corporate_actions` | `symbol` | Corporate actions |
 
 ### Batch / Multi-Symbol
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_batch_quotes` | `symbols` (comma-sep) | Quotes for multiple symbols |
+| `get_batch_quotes` | `symbols` | Quotes for multiple symbols |
 
 ### Options
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_option_expirations` | `symbol` | Available option expiration dates |
-| `yf_option_chain` | `symbol`, `date` (YYYY-MM-DD) | Full option chain for a given expiration |
+| `get_option_expirations` | `symbol` | Available option expiration dates |
+| `get_option_chain` | `symbol`, `date`(opt, YYYY-MM-DD) | Full option chain for a given expiration |
 
 ### Search & News
 
 | Tool | Parameters | Description |
 |---|---|---|
-| `yf_news` | `symbol` | Recent news for symbol |
-| `yf_search_tickers` | `query` | Search tickers by keyword |
+| `get_news` | `symbol` | Recent news for symbol |
+| `search_tickers` | `query` | Search tickers by keyword |
 
 ## Output Format
 
@@ -114,8 +114,6 @@ Every tool response includes a JSON block followed by a Markdown table:
 | price | 150.25 |
 | ... | ... |
 ```
-
-## Remote MCP (workaround)
 
 ## HTTP / SSE Transport
 
