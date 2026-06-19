@@ -17,8 +17,8 @@ jobs:
     name: Build binary
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      actions: write
+      contents: write
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -42,27 +42,14 @@ jobs:
           name: ${{ env.BINARY_NAME }}-linux-amd64
           path: yfinance-mcp/target/release/${{ env.BINARY_NAME }}
 
-  release:
-    name: Create GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build]
-    permissions:
-      contents: write
-      actions: read
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.BINARY_NAME }}-linux-amd64
-
-      - name: Package binary
+      - name: Package binary for release
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          mv ${{ env.BINARY_NAME }} ${{ env.BINARY_NAME }}-linux-amd64
+          cp yfinance-mcp/target/release/${{ env.BINARY_NAME }} ${{ env.BINARY_NAME }}-linux-amd64
           tar czf ${{ env.BINARY_NAME }}-linux-amd64.tar.gz ${{ env.BINARY_NAME }}-linux-amd64
 
-      - name: Create Release
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
