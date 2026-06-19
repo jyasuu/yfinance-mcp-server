@@ -27,6 +27,7 @@ cargo build --release
 | `YFINANCE_CACHE_TTL` | `300` | Cache TTL in seconds |
 | `YFINANCE_TIMEOUT` | `30` | Request timeout in seconds |
 | `YFINANCE_MAX_RETRIES` | `3` | Max retries on failure |
+| `YFINANCE_CORS_ORIGIN` | (none) | CORS origin for HTTP mode (`*` for any, or specific origin) |
 
 ## Tools
 

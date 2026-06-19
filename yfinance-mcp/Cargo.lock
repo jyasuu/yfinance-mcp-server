@@ -2711,7 +2711,7 @@ dependencies = [
 
 [[package]]
 name = "yfinance-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "chrono",
@@ -2721,6 +2721,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "yfinance-rs",

@@ -4,16 +4,30 @@ mod server;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::http::{header, HeaderValue, Method};
+use axum::middleware;
+use axum::response::Response;
 use rmcp::transport::{
     streamable_http_server::session::local::LocalSessionManager, StreamableHttpServerConfig,
     StreamableHttpService,
 };
 use rmcp::{transport::stdio, ServiceExt};
+use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
 use yfinance_rs::YfClientBuilder;
 
 use crate::server::YFinanceServer;
+
+async fn ensure_mcp_accept(mut req: axum::http::Request<axum::body::Body>, next: middleware::Next) -> Response {
+    if req.uri().path().starts_with("/mcp") && !req.headers().contains_key(header::ACCEPT) {
+        req.headers_mut().insert(
+            header::ACCEPT,
+            HeaderValue::from_static("application/json, text/event-stream"),
+        );
+    }
+    next.run(req).await
+}
 
 fn build_client() -> Result<Arc<yfinance_rs::YfClient>, Box<dyn std::error::Error>> {
     let cache_ttl = std::env::var("YFINANCE_CACHE_TTL")
@@ -71,7 +85,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..Default::default()
             },
         );
-        let router = axum::Router::new().nest_service("/mcp", service);
+        let mut router = axum::Router::new()
+            .nest_service("/mcp", service)
+            .layer(middleware::from_fn(ensure_mcp_accept));
+
+        if let Ok(cors_origin) = std::env::var("YFINANCE_CORS_ORIGIN") {
+            let cors = if cors_origin == "*" {
+                CorsLayer::new()
+                    .allow_origin(Any)
+                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                    .allow_headers(Any)
+            } else {
+                CorsLayer::new()
+                    .allow_origin(cors_origin.parse::<HeaderValue>().expect("invalid CORS origin"))
+                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                    .allow_headers(Any)
+            };
+            router = router.layer(cors);
+            tracing::info!("CORS enabled with origin: {}", cors_origin);
+        }
+
         let addr = format!("0.0.0.0:{}", port);
         tracing::info!("Starting yfinance MCP server over HTTP on {}", addr);
         let listener = tokio::net::TcpListener::bind(&addr).await?;
