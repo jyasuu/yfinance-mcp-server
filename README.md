@@ -30,6 +30,8 @@ cargo build --release
 | `YFINANCE_RETRY_BASE_DELAY` | `2` | Initial retry backoff delay in seconds |
 | `YFINANCE_RETRY_MAX_DELAY` | `30` | Maximum retry backoff delay in seconds |
 | `YFINANCE_CORS_ORIGIN` | (none) | CORS origin for HTTP mode (`*` for any, or specific origin) |
+| `YFINANCE_REPORTS_DIR` | `./yfinance-reports` | Directory for `generate_report` HTML output |
+| `YFINANCE_BASE_URL` | `http://localhost:<port>` | Base URL for report links in HTTP mode |
 
 ## Tools
 
@@ -104,6 +106,12 @@ cargo build --release
 | `get_news` | `symbol` | Recent news for symbol |
 | `search_tickers` | `query` | Search tickers by keyword |
 
+### Reports
+
+| Tool | Parameters | Description |
+|---|---|---|
+| `generate_report` | `symbol`, `range`(opt) | Generate HTML stock summary report with Tailwind CSS |
+
 ## Output Format
 
 Every tool response includes a JSON block followed by a Markdown table:
@@ -129,7 +137,7 @@ Images are published on tag (semver + `latest`) and on `main` branch pushes.
 
 ## Stock Analysis Skill
 
-An opencode skill is included at `.opencode/skills/stock-analysis/SKILL.md`. It provides a structured stock analysis workflow: symbol identification → parallel data fetch (info, historical data, recommendations, news) → compiled report with price snapshot, trend, fundamentals, analyst consensus, and news sentiment. Triggered on keywords like "analyze", "trend", "outlook".
+An opencode skill is included at `.opencode/skills/stock-analysis/SKILL.md`. It provides a structured stock analysis workflow: symbol identification → `generate_report` → file path/URL + brief summary. Triggered on keywords like "analyze", "trend", "outlook".
 
 ## HTTP / SSE Transport
 
@@ -139,7 +147,7 @@ Set `YFINANCE_HTTP_PORT` to run as an HTTP+SSE server (Streamable HTTP):
 YFINANCE_HTTP_PORT=8080 ./yfinance-mcp
 ```
 
-Listens on `0.0.0.0:<port>` with SSE endpoint at `/mcp`. Accept header must include both `application/json` and `text/event-stream`.
+Listens on `0.0.0.0:<port>` with SSE endpoint at `/mcp` and reports served at `/reports/`. Accept header must include both `application/json` and `text/event-stream`.
 
 Example client config:
 

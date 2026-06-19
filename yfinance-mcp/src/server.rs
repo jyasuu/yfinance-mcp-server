@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use rmcp::{
@@ -60,14 +61,18 @@ fn fmt_action_date(action: &yfinance_rs::Action) -> String {
 pub struct YFinanceServer {
     client: Arc<YfClient>,
     tool_router: ToolRouter<Self>,
+    reports_dir: PathBuf,
+    http_base_url: Option<String>,
 }
 
 #[tool_router]
 impl YFinanceServer {
-    pub fn new(client: Arc<YfClient>) -> Self {
+    pub fn new(client: Arc<YfClient>, reports_dir: PathBuf, http_base_url: Option<String>) -> Self {
         Self {
             client,
             tool_router: Self::tool_router(),
+            reports_dir,
+            http_base_url,
         }
     }
 
@@ -698,6 +703,67 @@ impl YFinanceServer {
         )]))
     }
 
+    // ── Report ───────────────────────────────────────────────────
+
+    #[tool(description = "Generate an HTML stock summary report with Tailwind CSS")]
+    async fn generate_report(
+        &self,
+        Parameters(args): Parameters<ReportArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let ticker = self.ticker(&args.symbol);
+        let range = Some(parse_range(args.range.as_deref()));
+
+        let (info, fast_info, candles, news) = tokio::join!(
+            async { Self::exec(ticker.info()).await.ok() },
+            async { Self::exec(ticker.fast_info()).await.ok() },
+            async {
+                Self::exec(ticker.history(range, Some(Interval::D1), false))
+                    .await
+                    .ok()
+            },
+            async { Self::exec(ticker.news()).await.ok() },
+        );
+
+        let info_val = info
+            .as_ref()
+            .map(json_val)
+            .unwrap_or(serde_json::Value::Null);
+        let fast_val = fast_info
+            .as_ref()
+            .map(json_val)
+            .unwrap_or(serde_json::Value::Null);
+        let candles_val = candles
+            .as_ref()
+            .map(json_val)
+            .unwrap_or(serde_json::Value::Null);
+        let news_val = news
+            .as_ref()
+            .map(json_val)
+            .unwrap_or(serde_json::Value::Null);
+
+        let html = format::report_html(&args.symbol, &info_val, &fast_val, &candles_val, &news_val);
+
+        let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("{}_{}.html", args.symbol, timestamp);
+        let filepath = self.reports_dir.join(&filename);
+
+        tokio::fs::write(&filepath, html)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None::<serde_json::Value>))?;
+
+        let mut result = serde_json::json!({
+            "message": format!("Report saved to {}", filepath.display()),
+            "path": filepath.to_string_lossy().to_string(),
+        });
+        if let Some(base_url) = &self.http_base_url {
+            result["url"] = serde_json::json!(format!("{}/reports/{}", base_url, filename));
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&result).unwrap_or_default(),
+        )]))
+    }
+
     // ── Search ───────────────────────────────────────────────────
 
     #[tool(description = "Search for ticker symbols by name or keyword")]
@@ -810,4 +876,12 @@ pub struct OptionChainArgs {
 pub struct SearchArgs {
     /// The search query (company name or keyword)
     pub query: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ReportArgs {
+    /// The ticker symbol (e.g. AAPL, MSFT, GOOGL)
+    pub symbol: String,
+    /// Time range for historical data: 1d, 5d, 1mo, 3mo, 6mo, ytd, 1y, 2y, 5y, 10y, max (default: 6mo)
+    pub range: Option<String>,
 }

@@ -5,7 +5,7 @@ description: Use ONLY when the user asks to analyze, evaluate, research, or get 
 
 # Stock Analysis
 
-When the user asks you to analyze a stock, produce a structured report by calling the yfinance MCP tools in this order.
+When the user asks you to analyze a stock, generate an HTML report using `generate_report`, then present a brief summary.
 
 ## Workflow
 
@@ -26,64 +26,27 @@ Use the most relevant result's symbol.
 - London: add `.L` suffix (e.g. `BP.L`, `HSBA.L`)
 - If the first suffix fails, try another or ask the user.
 
-### 2. Gather data (parallel calls)
+### 2. Generate the report
 
-Fire these concurrently:
-
-```
-Tool: get_info
-Input: {"symbol": "<SYMBOL>"}
-```
+Call `generate_report` with the symbol (and optional range):
 
 ```
-Tool: get_fast_info
-Input: {"symbol": "<SYMBOL>"}
+Tool: generate_report
+Input: {"symbol": "<SYMBOL>", "range": "6mo"}
 ```
 
-```
-Tool: get_historical_data
-Input: {"symbol": "<SYMBOL>", "range": "6mo", "interval": "1d"}
-```
+The tool returns a JSON with the file path and (in HTTP mode) a URL.
+
+### 3. Present to the user
+
+State the file path/URL and give a 2-3 sentence summary:
 
 ```
-Tool: get_recommendations
-Input: {"symbol": "<SYMBOL>"}
-```
+### <Company Name> (<SYMBOL>) — Stock Analysis
 
-```
-Tool: get_news
-Input: {"symbol": "<SYMBOL>"}
-```
+**Report:** <file path or URL>
 
-### 3. Compile the report
-
-Present the findings in this structure:
-
-```
-## 📊 <Company Name> (<SYMBOL>) — Stock Analysis
-
-**Price:** $XXX.XX  |  **Prev Close:** $XXX.XX  |  **Day Range:** $X.XX – $X.XX
-**50-day MA:** $XXX.XX  |  **200-day MA:** $XXX.XX  |  **Volume:** X,XXX,XXX
-
-### Trend (from 6-month chart)
-- **Direction:** Up / Down / Sideways
-- **Key Support:** ~$XXX  |  **Key Resistance:** ~$XXX
-- **Notable:** (brief observation on the chart pattern, volume spikes, etc.)
-
-### Fundamentals
-- **Sector/Industry:** ...
-- **Market Cap:** $X.XB
-- **Key Ratios:** P/E, EPS, Dividend Yield, etc. (pulled from info)
-
-### Analyst Consensus
-- **Strong Buy:** X  |  **Buy:** X  |  **Hold:** X  |  **Sell:** X  |  **Strong Sell:** X
-- **Price Target:** High $XXX / Low $XXX / Mean $XXX
-
-### Recent News
-- (Top 3 headlines with brief 1-line takeaway)
-
-### Summary
-1-2 sentence verdict synthesizing price action, fundamentals, analyst consensus, and news sentiment. Call out if news aligns or conflicts with the technical/fundamental picture.
+<2-3 sentence verdict synthesizing price action, fundamentals, analyst consensus, and news sentiment. Call out if news aligns or conflicts with the technical/fundamental picture.>
 ```
 
 ### 4. Use good judgment
