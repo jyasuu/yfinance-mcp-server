@@ -147,11 +147,10 @@ Set `YFINANCE_HTTP_PORT` to run as an HTTP+SSE server (Streamable HTTP):
 YFINANCE_HTTP_PORT=8080 ./yfinance-mcp
 ```
 
-**Windows:**
+**Windows** (auto-downloads binary if missing):
 ```cmd
 run-http.cmd
 ```
-or
 ```powershell
 .\run-http.ps1
 ```
