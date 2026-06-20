@@ -147,6 +147,15 @@ Set `YFINANCE_HTTP_PORT` to run as an HTTP+SSE server (Streamable HTTP):
 YFINANCE_HTTP_PORT=8080 ./yfinance-mcp
 ```
 
+**Windows:**
+```cmd
+run-http.cmd
+```
+or
+```powershell
+.\run-http.ps1
+```
+
 Listens on `0.0.0.0:<port>` with SSE endpoint at `/mcp` and reports served at `/reports/`. Accept header must include both `application/json` and `text/event-stream`.
 
 Example client config:
