@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 param(
     [string]$Version = "latest",
-    [string]$Repo = "jyasuu/yfinance-mcp"
+    [string]$Repo = "jyasuu/yfinance-mcp-server"
 )
 
 $ErrorActionPreference = "Stop"

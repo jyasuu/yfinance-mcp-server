@@ -23,7 +23,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run-http.ps1"
 if %ERRORLEVEL% neq 0 (
     echo.
     echo Auto-install failed. Download manually from:
-    echo   https://github.com/jyasuu/yfinance-mcp/releases
+    echo   https://github.com/jyasuu/yfinance-mcp-server/releases
     echo Place yfinance-mcp.exe in this directory or add it to PATH.
     pause
     exit /b 1
