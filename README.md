@@ -1,6 +1,6 @@
 # yfinance-mcp-server
 
-MCP server wrapping [yfinance-rs](https://crates.io/crates/yfinance-rs) v0.9, exposing 25+ Yahoo Finance tools over stdio or HTTP/SSE transport.
+MCP server wrapping [yfinance-rs](https://crates.io/crates/yfinance-rs) v0.9, exposing 30+ Yahoo Finance tools over stdio or HTTP/SSE transport.
 
 ## Usage
 
@@ -32,6 +32,9 @@ cargo build --release
 | `YFINANCE_CORS_ORIGIN` | (none) | CORS origin for HTTP mode (`*` for any, or specific origin) |
 | `YFINANCE_REPORTS_DIR` | `./yfinance-reports` | Directory for `generate_report` HTML output |
 | `YFINANCE_BASE_URL` | `http://localhost:<port>` | Base URL for report links in HTTP mode |
+| `YFINANCE_AI_BASE_URL` | (none) | AI chat completions endpoint for `analyze_news` (e.g. `https://opencode.ai/zen/v1/chat/completions`) |
+| `YFINANCE_AI_MODEL` | (none) | Model name for AI analysis (e.g. `big-pickle`) |
+| `YFINANCE_AI_API_KEY` | (none) | API key for the AI endpoint (not required by all endpoints) |
 
 ## Tools
 
@@ -104,6 +107,7 @@ cargo build --release
 | Tool | Parameters | Description |
 |---|---|---|
 | `get_news` | `symbol` | Recent news for symbol |
+| `analyze_news` | `symbol` | AI-powered news sentiment analysis (requires `YFINANCE_AI_BASE_URL`) |
 | `search_tickers` | `query` | Search tickers by keyword |
 
 ### Reports
@@ -134,6 +138,32 @@ docker run ghcr.io/jyasuu/yfinance-mcp:latest
 ```
 
 Images are published on tag (semver + `latest`) and on `main` branch pushes.
+
+## AI News Analysis
+
+The `analyze_news` tool fetches news for a symbol and sends it to an AI endpoint for sentiment/thematic analysis. Configure via environment variables:
+
+```sh
+YFINANCE_AI_BASE_URL="https://opencode.ai/zen/v1/chat/completions" \
+YFINANCE_AI_MODEL="big-pickle" \
+./yfinance-mcp
+```
+
+The tool is **hidden** from the tool list when `YFINANCE_AI_BASE_URL` is not set. API key is optional (not all endpoints require it).
+
+### opencode.json
+
+```json
+"yfinance": {
+  "type": "local",
+  "command": ["./yfinance-mcp/target/release/yfinance-mcp"],
+  "enabled": true,
+  "environment": {
+    "YFINANCE_AI_BASE_URL": "https://opencode.ai/zen/v1/chat/completions",
+    "YFINANCE_AI_MODEL": "big-pickle"
+  }
+}
+```
 
 ## Stock Analysis Skill
 
