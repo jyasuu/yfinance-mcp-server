@@ -19,7 +19,7 @@ use tracing_subscriber::EnvFilter;
 
 use yfinance_rs::YfClientBuilder;
 
-use crate::server::YFinanceServer;
+use crate::server::{AiConfig, YFinanceServer};
 
 async fn ensure_mcp_accept(
     mut req: axum::http::Request<axum::body::Body>,
@@ -102,6 +102,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::fs::create_dir_all(&reports_dir).await?;
     tracing::info!("Reports directory: {}", reports_dir.display());
 
+    let ai_config = std::env::var("YFINANCE_AI_BASE_URL")
+        .ok()
+        .map(|base_url| AiConfig {
+            base_url,
+            model: std::env::var("YFINANCE_AI_MODEL").ok(),
+            api_key: std::env::var("YFINANCE_AI_API_KEY").ok(),
+        });
+    if let Some(ref cfg) = ai_config {
+        tracing::info!(
+            "AI news analysis enabled (model: {})",
+            cfg.model.as_deref().unwrap_or("unset"),
+        );
+    }
+
     if let Some(port) = std::env::var("YFINANCE_HTTP_PORT")
         .ok()
         .and_then(|s| s.parse::<u16>().ok())
@@ -116,11 +130,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let client = client.clone();
                 let reports_dir = reports_dir.clone();
                 let http_base_url = http_base_url.clone();
+                let ai_config = ai_config.clone();
                 move || {
                     Ok(YFinanceServer::new(
                         client.clone(),
                         reports_dir.clone(),
                         http_base_url.clone(),
+                        ai_config.clone(),
                     ))
                 }
             },
@@ -162,7 +178,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         axum::serve(listener, router).await?;
     } else {
-        let server = YFinanceServer::new(client, reports_dir, None);
+        let server = YFinanceServer::new(client, reports_dir, None, ai_config);
         tracing::info!("Starting yfinance MCP server over stdio...");
         server.serve(stdio()).await?.waiting().await?;
     }

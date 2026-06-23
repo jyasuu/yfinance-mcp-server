@@ -2,8 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rmcp::{
-    handler::server::router::tool::ToolRouter, handler::server::wrapper::Parameters, model::*,
-    schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
+    handler::server::router::tool::ToolRouter, handler::server::tool::ToolCallContext,
+    handler::server::wrapper::Parameters, model::*, schemars, service::RequestContext, tool,
+    tool_router, ErrorData as McpError, RoleServer, ServerHandler,
 };
 
 use yfinance_rs::{Interval, Range, Ticker, YfClient};
@@ -58,21 +59,35 @@ fn fmt_action_date(action: &yfinance_rs::Action) -> String {
 }
 
 #[derive(Debug, Clone)]
+pub struct AiConfig {
+    pub base_url: String,
+    pub model: Option<String>,
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct YFinanceServer {
     client: Arc<YfClient>,
     tool_router: ToolRouter<Self>,
     reports_dir: PathBuf,
     http_base_url: Option<String>,
+    ai_config: Option<AiConfig>,
 }
 
 #[tool_router]
 impl YFinanceServer {
-    pub fn new(client: Arc<YfClient>, reports_dir: PathBuf, http_base_url: Option<String>) -> Self {
+    pub fn new(
+        client: Arc<YfClient>,
+        reports_dir: PathBuf,
+        http_base_url: Option<String>,
+        ai_config: Option<AiConfig>,
+    ) -> Self {
         Self {
             client,
             tool_router: Self::tool_router(),
             reports_dir,
             http_base_url,
+            ai_config,
         }
     }
 
@@ -651,6 +666,123 @@ impl YFinanceServer {
         )]))
     }
 
+    #[tool(description = "Analyze news for a ticker using AI (set YFINANCE_AI_BASE_URL to enable)")]
+    async fn analyze_news(
+        &self,
+        Parameters(args): Parameters<SymbolArg>,
+    ) -> Result<CallToolResult, McpError> {
+        let config = self.ai_config.as_ref().ok_or_else(|| {
+            McpError::internal_error(
+                "AI analysis not configured. Set YFINANCE_AI_BASE_URL to enable.",
+                None::<serde_json::Value>,
+            )
+        })?;
+
+        let ticker = self.ticker(&args.symbol);
+        let articles = Self::exec(ticker.news()).await?;
+
+        let summary = if articles.is_empty() {
+            "No recent news articles available for analysis.".to_string()
+        } else {
+            let news_lines: Vec<String> = articles
+                .iter()
+                .map(|a| {
+                    let link = a.link.as_deref().unwrap_or("");
+                    let publisher = a.publisher.as_deref().unwrap_or("Unknown");
+                    format!(
+                        "- {} ({} via {})\n  {}",
+                        a.title, a.published_at, publisher, link
+                    )
+                })
+                .collect();
+
+            let prompt = format!(
+                "Analyze these recent news articles for {} ({}) and provide:\n\
+                 1. Overall sentiment (bullish/bearish/neutral with explanation)\n\
+                 2. Key themes, risks, or catalysts mentioned\n\
+                 3. Potential impact on stock performance\n\nNews:\n{}",
+                args.symbol,
+                articles.len(),
+                news_lines.join("\n"),
+            );
+
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(300))
+                .build()
+                .map_err(|e| {
+                    McpError::internal_error(
+                        format!("Failed to create HTTP client: {}", e),
+                        None::<serde_json::Value>,
+                    )
+                })?;
+
+            let mut req = client
+                .post(&config.base_url)
+                .header("Content-Type", "application/json");
+            if let Some(ref key) = config.api_key {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+
+            let mut body = serde_json::json!({
+                "messages": [{"role": "user", "content": prompt}]
+            });
+            if let Some(ref model) = config.model {
+                body["model"] = serde_json::json!(model);
+            }
+
+            let resp = req.json(&body).send().await.map_err(|e| {
+                McpError::internal_error(
+                    format!("AI request failed: {}", e),
+                    None::<serde_json::Value>,
+                )
+            })?;
+
+            let status = resp.status();
+            if !status.is_success() {
+                let error_text = resp.text().await.unwrap_or_default();
+                return Err(McpError::internal_error(
+                    format!("AI request failed ({}): {}", status, error_text),
+                    None::<serde_json::Value>,
+                ));
+            }
+
+            let resp_json: serde_json::Value = resp.json().await.map_err(|e| {
+                McpError::internal_error(
+                    format!("AI response parse failed: {}", e),
+                    None::<serde_json::Value>,
+                )
+            })?;
+
+            resp_json["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap_or("No analysis returned")
+                .to_string()
+        };
+
+        let news_j = json_val(&articles);
+        let news_headers = vec!["Title", "Publisher", "Date", "Link"];
+        let news_rows: Vec<Vec<String>> = articles
+            .iter()
+            .map(|a| {
+                vec![
+                    a.title.clone(),
+                    a.publisher.clone().unwrap_or_default(),
+                    a.published_at.to_string(),
+                    a.link.clone().unwrap_or_default(),
+                ]
+            })
+            .collect();
+
+        let mut md = format!("## AI Analysis: {}\n\n{}\n\n", args.symbol, summary);
+        md.push_str(&format::json_md_with_table(
+            &format!("Source News: {}", args.symbol),
+            &news_j,
+            &news_headers,
+            &news_rows,
+        ));
+        Ok(CallToolResult::success(vec![Content::text(md)]))
+    }
+
     #[tool(description = "Get company, ETF, or fund profile information")]
     async fn get_profile(
         &self,
@@ -792,7 +924,6 @@ impl YFinanceServer {
     }
 }
 
-#[tool_handler]
 impl ServerHandler for YFinanceServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -809,6 +940,41 @@ impl ServerHandler for YFinanceServer {
                     .to_string(),
             ),
         }
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        if name == "analyze_news" && self.ai_config.is_none() {
+            return None;
+        }
+        self.tool_router.get(name).cloned()
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        let mut tools = self.tool_router.list_all();
+        if self.ai_config.is_none() {
+            tools.retain(|t| t.name.as_ref() != "analyze_news");
+        }
+        Ok(ListToolsResult {
+            tools,
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        if self.get_tool(&request.name).is_none() {
+            return Err(McpError::invalid_params("tool not found", None::<serde_json::Value>));
+        }
+        let tcc = ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
     }
 }
 

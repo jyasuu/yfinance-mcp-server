@@ -4,7 +4,11 @@
     "yfinance": {
       "type": "local",
       "command": ["./yfinance-mcp/target/release/yfinance-mcp"],
-      "enabled": true
+      "enabled": true,
+      "environment": {
+        "YFINANCE_AI_BASE_URL": "https://opencode.ai/zen/v1/chat/completions",
+        "YFINANCE_AI_MODEL": "big-pickle"
+      }
     },
     "yfinance-docker": {
       "type": "local",
